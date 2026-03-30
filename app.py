@@ -25,7 +25,7 @@ class MongoJSONEncoder(json.JSONEncoder):
 
 app = Flask(__name__)
 app.json_encoder = MongoJSONEncoder
-CORS(app, origins=['http://localhost:3000'], supports_credentials=True)
+CORS(app, origins=['https://sunchain-66av.onrender.com'], supports_credentials=True)
 
 from models import mongo, User, Post
 app.config['MONGO_URI'] = os.getenv('MONGODB_URI')
