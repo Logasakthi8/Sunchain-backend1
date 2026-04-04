@@ -256,5 +256,15 @@ def get_profile(current_user):
 def health_check():
     return jsonify({'status': 'ok', 'message': 'Server is running'})
 
+# Serve React App - Catch all routes and return index.html
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_react_app(path):
+    # Skip API routes
+    if path.startswith('api/') or path.startswith('uploads/'):
+        return jsonify({'error': 'Not found'}), 404
+    # Return index.html for all other routes
+    return send_from_directory('../frontend/build', 'index.html')
+
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=5001)
