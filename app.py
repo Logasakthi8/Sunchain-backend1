@@ -25,7 +25,7 @@ class MongoJSONEncoder(json.JSONEncoder):
 
 app = Flask(__name__)
 app.json_encoder = MongoJSONEncoder
-CORS(app, origins=['https://sunchain-66av.onrender.com'], supports_credentials=True)
+CORS(app, origins=['http://localhost:3000'], supports_credentials=True)
 
 from models import mongo, User, Post
 app.config['MONGO_URI'] = os.getenv('MONGODB_URI')
@@ -146,6 +146,7 @@ def get_post(post_id):
         traceback.print_exc()
         return jsonify({'message': str(e)}), 500
 
+# Update the create_post endpoint in app.py
 @app.route('/api/posts', methods=['POST'])
 @token_required
 def create_post(current_user):
@@ -153,24 +154,25 @@ def create_post(current_user):
         title = request.form.get('title')
         category = request.form.get('category')
         content = request.form.get('content')
-        image = request.files.get('image')
+        cover_image = request.files.get('coverImage')
         
-        if not title or not content:
-            return jsonify({'message': 'Title and content are required'}), 400
+        print(f"Creating post: {title}")
+        print(f"Cover image received: {cover_image}")
         
-        image_data = None
-        image_filename = None
+        cover_image_data = None
+        cover_image_filename = None
         
-        if image and allowed_file(image.filename):
-            image_data = image.read()
-            image_filename = secure_filename(image.filename)
+        if cover_image and allowed_file(cover_image.filename):
+            cover_image_data = cover_image.read()
+            cover_image_filename = secure_filename(cover_image.filename)
+            print(f"Cover image size: {len(cover_image_data)} bytes")
         
         result = Post.create_post(
             title=title,
             category=category,
-            image_data=image_data,
-            image_filename=image_filename,
             content=content,
+            cover_image_data=cover_image_data,
+            cover_image_filename=cover_image_filename,
             author_id=current_user['_id'],
             author_name=current_user['username']
         )
@@ -184,9 +186,9 @@ def create_post(current_user):
         })
     except Exception as e:
         print(f"Error creating post: {e}")
+        import traceback
         traceback.print_exc()
         return jsonify({'message': str(e)}), 500
-
 @app.route('/api/posts/<post_id>/like', methods=['POST'])
 @token_required
 def like_post(current_user, post_id):
@@ -255,16 +257,6 @@ def get_profile(current_user):
 @app.route('/api/health', methods=['GET'])
 def health_check():
     return jsonify({'status': 'ok', 'message': 'Server is running'})
-
-# Serve React App - Catch all routes and return index.html
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def serve_react_app(path):
-    # Skip API routes
-    if path.startswith('api/') or path.startswith('uploads/'):
-        return jsonify({'error': 'Not found'}), 404
-    # Return index.html for all other routes
-    return send_from_directory('../frontend/build', 'index.html')
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=5001)
