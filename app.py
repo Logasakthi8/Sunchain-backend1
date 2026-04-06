@@ -152,32 +152,44 @@ def get_post(post_id):
 def create_post(current_user):
     try:
         title = request.form.get('title')
-        category = request.form.get('category')
+        category = request.form.get('category', 'General')  # Default to 'General' if not provided
         content = request.form.get('content')
-        cover_image = request.files.get('coverImage')
+        image = request.files.get('image')
         
         print(f"Creating post: {title}")
-        print(f"Cover image received: {cover_image}")
+        print(f"Category: {category}")
         
-        cover_image_data = None
-        cover_image_filename = None
+        image_data = None
+        image_filename = None
         
-        if cover_image and allowed_file(cover_image.filename):
-            cover_image_data = cover_image.read()
-            cover_image_filename = secure_filename(cover_image.filename)
-            print(f"Cover image size: {len(cover_image_data)} bytes")
+        if image and allowed_file(image.filename):
+            image_data = image.read()
+            image_filename = secure_filename(image.filename)
+            print(f"Image size: {len(image_data)} bytes")
         
-        result = Post.create_post(
-            title=title,
-            category=category,
-            content=content,
-            cover_image_data=cover_image_data,
-            cover_image_filename=cover_image_filename,
-            author_id=current_user['_id'],
-            author_name=current_user['username']
+        # Create post with default category if not provided
+        post = {
+            'title': title,
+            'category': category if category else 'General',
+            'content': content,
+            'author_id': current_user['_id'],
+            'author_name': current_user['username'],
+            'likes': 0,
+            'comments': [],
+            'created_at': datetime.utcnow()
+        }
+        
+        if image_data and image_filename:
+            post['image_data'] = Binary(image_data)
+            post['image_filename'] = image_filename
+        
+        result = mongo.db.posts.insert_one(post)
+        
+        # Update user points
+        mongo.db.users.update_one(
+            {'_id': current_user['_id']},
+            {'$inc': {'points': 200, 'total_blogs': 1}}
         )
-        
-        User.update_points(current_user['_id'], 200)
         
         return jsonify({
             'message': 'Post created',
@@ -189,6 +201,7 @@ def create_post(current_user):
         import traceback
         traceback.print_exc()
         return jsonify({'message': str(e)}), 500
+        
 @app.route('/api/posts/<post_id>/like', methods=['POST'])
 @token_required
 def like_post(current_user, post_id):
