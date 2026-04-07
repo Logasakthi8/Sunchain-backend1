@@ -1,5 +1,4 @@
 import os
-import uuid
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -13,26 +12,16 @@ import traceback
 
 load_dotenv()
 
-class MongoJSONEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, ObjectId):
-            return str(obj)
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        if isinstance(obj, bytes):
-            return str(obj)
-        return super().default(obj)
-
 app = Flask(__name__)
-app.json_encoder = MongoJSONEncoder
 CORS(app, origins=['https://sunchain-66av.onrender.com'], supports_credentials=True)
 
+# MongoDB setup - Import models after app initialization
 from models import mongo, User, Post
 app.config['MONGO_URI'] = os.getenv('MONGODB_URI')
 mongo.init_app(app)
 
 app.config['SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-secret-key-change-this')
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'}
 
@@ -146,18 +135,28 @@ def get_post(post_id):
         traceback.print_exc()
         return jsonify({'message': str(e)}), 500
 
-# Update the create_post endpoint in app.py
 @app.route('/api/posts', methods=['POST'])
 @token_required
 def create_post(current_user):
     try:
+        print("=" * 50)
+        print("CREATE POST REQUEST")
+        
         title = request.form.get('title')
-        category = request.form.get('category', 'General')  # Default to 'General' if not provided
+        category = request.form.get('category')
         content = request.form.get('content')
         image = request.files.get('image')
         
-        print(f"Creating post: {title}")
+        print(f"Title: {title}")
         print(f"Category: {category}")
+        print(f"Content length: {len(content) if content else 0}")
+        print(f"Image: {image.filename if image else 'No image'}")
+        
+        if not title:
+            return jsonify({'message': 'Title is required'}), 400
+        
+        if not content:
+            return jsonify({'message': 'Content is required'}), 400
         
         image_data = None
         image_filename = None
@@ -167,29 +166,20 @@ def create_post(current_user):
             image_filename = secure_filename(image.filename)
             print(f"Image size: {len(image_data)} bytes")
         
-        # Create post with default category if not provided
-        post = {
-            'title': title,
-            'category': category if category else 'General',
-            'content': content,
-            'author_id': current_user['_id'],
-            'author_name': current_user['username'],
-            'likes': 0,
-            'comments': [],
-            'created_at': datetime.utcnow()
-        }
-        
-        if image_data and image_filename:
-            post['image_data'] = Binary(image_data)
-            post['image_filename'] = image_filename
-        
-        result = mongo.db.posts.insert_one(post)
-        
-        # Update user points
-        mongo.db.users.update_one(
-            {'_id': current_user['_id']},
-            {'$inc': {'points': 200, 'total_blogs': 1}}
+        result = Post.create_post(
+            title=title,
+            category=category,
+            content=content,
+            image_data=image_data,
+            image_filename=image_filename,
+            author_id=current_user['_id'],
+            author_name=current_user['username']
         )
+        
+        User.update_points(current_user['_id'], 200)
+        
+        print(f"Post created successfully: {result.inserted_id}")
+        print("=" * 50)
         
         return jsonify({
             'message': 'Post created',
@@ -198,48 +188,34 @@ def create_post(current_user):
         })
     except Exception as e:
         print(f"Error creating post: {e}")
-        import traceback
         traceback.print_exc()
         return jsonify({'message': str(e)}), 500
-        
+
 @app.route('/api/posts/<post_id>/like', methods=['POST'])
 @token_required
 def like_post(current_user, post_id):
     try:
-        print(f"Like request for post: {post_id} by user: {current_user['username']}")
-        result = Post.like_post(post_id)
-        if result.modified_count > 0:
-            print(f"Post liked successfully. Modified count: {result.modified_count}")
-            return jsonify({'message': 'Post liked', 'success': True})
-        else:
-            print("Post not found or already liked?")
-            return jsonify({'message': 'Post not found', 'success': False}), 404
+        Post.like_post(post_id)
+        return jsonify({'message': 'Post liked'})
     except Exception as e:
         print(f"Error liking post: {e}")
-        traceback.print_exc()
-        return jsonify({'message': str(e), 'success': False}), 500
+        return jsonify({'message': str(e)}), 500
 
 @app.route('/api/posts/<post_id>/comment', methods=['POST'])
 @token_required
 def add_comment(current_user, post_id):
     try:
         data = request.get_json()
-        comment_text = data.get('text')
-        
-        if not comment_text:
-            return jsonify({'message': 'Comment text is required'}), 400
-        
         comment = {
             'user_id': str(current_user['_id']),
             'username': current_user['username'],
-            'text': comment_text,
+            'text': data.get('text'),
             'created_at': datetime.utcnow().isoformat()
         }
         Post.add_comment(post_id, comment)
         return jsonify({'message': 'Comment added'})
     except Exception as e:
         print(f"Error adding comment: {e}")
-        traceback.print_exc()
         return jsonify({'message': str(e)}), 500
 
 @app.route('/api/user/posts', methods=['GET'])
@@ -267,9 +243,5 @@ def get_profile(current_user):
         print(f"Error fetching profile: {e}")
         return jsonify({'message': str(e)}), 500
 
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    return jsonify({'status': 'ok', 'message': 'Server is running'})
-
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=5001)
+    app.run(debug=True, port=5000)
