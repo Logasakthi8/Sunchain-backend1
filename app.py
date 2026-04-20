@@ -15,7 +15,7 @@ import base64
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app, origins=['https://sunchain-66av.onrender.com/'], supports_credentials=True)
+CORS(app, origins=['https://sunchain-66av.onrender.com'], supports_credentials=True)
 
 # MongoDB setup - Initialize PyMongo
 from flask_pymongo import PyMongo
